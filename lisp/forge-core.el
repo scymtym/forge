@@ -286,6 +286,7 @@ at that time."
                (or (when-let
                        ((v (ignore-errors
                              (cl-case slot
+                               (owner   (oref object owner))
                                (repo    (oref object name))
                                (project (concat (replace-regexp-in-string
                                                  "/" "%2F" (oref object owner))
