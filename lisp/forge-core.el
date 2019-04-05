@@ -292,6 +292,10 @@ at that time."
                                                  "/" "%2F" (oref object owner))
                                                 "%2F"
                                                 (oref object name)))
+                               (project-keep-slash (concat (replace-regexp-in-string
+                                                            "/" "%2F" (oref object owner))
+                                                           "/"
+                                                           (oref object name)))
                                (topic   (and (forge--childp object 'forge-topic)
                                              (oref object number)))
                                (t       (eieio-oref object slot))))))
