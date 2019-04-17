@@ -52,50 +52,58 @@
 
 (cl-defmethod forge--update-repository ((repo forge-gitea-repository) data)
   (let-alist data
-    (oset repo )))
+    ; (oset repo )
+    ))
 
 ;;; Issues
 
 (cl-defmethod forge--fetch-issues ((repo forge-gitea-repository) callback until)
-  (let ((issues)
+  (let ((state)
+        (page)
+        (issues)
         (issue-tail)
         (issue)
-        (issue-count)
-        (issue-index 0))
-   (cl-labels ((on-issues (value _headers _status _req)
-                 (setf issues value)
-                 (setf issue-count (length value)
-                       issue-tail issues)
-                 (next-issue))
-               (next-issue ()
-                 (if issue-tail
-                     (progn
-                       (setf issue (pop issue-tail))
-                       (cl-incf issue-index)
-                       (forge--msg nil nil nil "Pulling issue %s/%s"
-                                   issue-index issue-count)
-                       (forge--fetch-issue-posts repo issue-index #'on-posts))
-                   (funcall callback issues)))
-               (on-posts (value)
-                 (setf (alist-get 'comments issue) value)
-                 (message "issue with comments %s" issue)
-                 (next-issue)))
-     ;; FIXME fetch all pages
-     (forge--gtea-get repo "repos/:project-keep-slash/issues"
-                      '((page  . 0)
-                        (state . "closed"))
-                      :callback #'on-issues)
-     ;; FIXME is this allowed? Do we have to initiate this from the first callback?
-     (forge--gtea-get repo "repos/:project-keep-slash/issues"
-                      '((page  . 0)
-                        (state . "open"))
-                      :callback #'on-issues))))
+        (issue-count 0)
+        (issue-index 0)
+        (then))
+    (cl-labels ((fetch-issues (state* then*)
+                  (setf state state*
+                        page 1
+                        then then*)
+                  (fetch-page))
+                (fetch-page ()
+                  (message "page %s" page)
+                  (cl-incf page)
+                  (forge--gtea-get repo "repos/:project-keep-slash/issues"
+                                   `((page  . ,(1- page))
+                                     (state . ,state))
+                                   :callback #'on-issues))
+                (on-issues (value _headers _status _req)
+                  (if (null value)
+                      (funcall then)
+                    (setf issues (append issues value))
+                    (cl-incf issue-count (length value))
+                    (setf issue-tail value)
+                    (next-issue)))
+                (next-issue ()
+                  (if issue-tail
+                      (progn
+                        (setf issue (pop issue-tail))
+                        (cl-incf issue-index)
+                        (message "%s issue %s/%s" state issue-index issue-count)
+                        (forge--msg nil nil nil "Pulling issue %s/%s"
+                                    issue-index issue-count)
+                        (forge--fetch-issue-posts repo issue-index #'on-posts))
+                    (fetch-page)))
+                (on-posts (value)
+                  (setf (alist-get 'comments issue) value)
+                  (next-issue)))
+      (fetch-issues "closed" (lambda () (fetch-issues "open" (lambda () (funcall callback issues))))))))
 
 (cl-defmethod forge--fetch-issue-posts ((repo forge-gitea-repository) cur callback)
-  ;; FIXME fetch all pages
   (forge--gtea-get repo
                    (format "/repos/:project-keep-slash/issues/%s/comments" cur)
-                   '((page . 0))
+                   '()
                    :callback (lambda (value _headers _status _req)
                                (funcall callback value))))
 
@@ -135,7 +143,6 @@
                   :created .create_at
                   :updated .updated_at
                   :body    (forge--sanitize-string .body))))
-            (message "post %s" post)
             (closql-insert (forge-db) post t)))))))
 
 ;;; Other
